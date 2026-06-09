@@ -17,8 +17,8 @@ Python · **PyWa 4.x (BSUID-first)** · FastAPI · httpx · Sentry · `uv`.
 
 ## BSUID (see ARCHITECTURE §10)
 
-- Use `WhatsApp(user_identifier_priority="bsuid -> wa_id")`.
-- `user.bsuid` is the **primary** identifier → maps to canonical `contact.external_id`. `user.wa_id` is optional/secondary.
+- `user.bsuid` is the **primary** identifier → maps to canonical `contact.external_id` (in the handlers). `user.wa_id` is optional/secondary.
+- Do **not** override PyWa's `user_identifier_priority` (wa_id-first): it only controls how **replies are addressed**, and Meta's API does not yet support BSUID-based send endpoints. PyWa will flip its default when it does.
 - Install: `uv add "pywa[fastapi]"` (4.x is now a stable release).
 
 ## Dev
