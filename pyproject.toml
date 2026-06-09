@@ -21,10 +21,6 @@ test = [
     "respx>=0.21.0",
 ]
 
-# PyWa 4.x (BSUID support) currently ships as a pre-release.
-[tool.uv]
-prerelease = "allow"
-
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]

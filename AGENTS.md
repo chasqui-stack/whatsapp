@@ -13,13 +13,13 @@ The **WhatsApp channel adapter** for Chasqui: a thin, **stateless** bridge betwe
 
 ## Stack
 
-Python · **PyWa 4.x (beta, BSUID-first)** · FastAPI · httpx · Sentry · `uv`.
+Python · **PyWa 4.x (BSUID-first)** · FastAPI · httpx · Sentry · `uv`.
 
 ## BSUID (see ARCHITECTURE §10)
 
 - Use `WhatsApp(user_identifier_priority="bsuid -> wa_id")`.
 - `user.bsuid` is the **primary** identifier → maps to canonical `contact.external_id`. `user.wa_id` is optional/secondary.
-- Install beta: `uv add "pywa --prerelease=allow"`.
+- Install: `uv add "pywa[fastapi]"` (4.x is now a stable release).
 
 ## Dev
 
