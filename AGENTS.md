@@ -5,7 +5,7 @@ The **WhatsApp channel adapter** for Chasqui: a thin, **stateless** bridge betwe
 ## Job
 
 1. Receive WhatsApp webhooks (text, audio, image, buttons).
-2. **Normalize to the canonical message** (`docs/ARCHITECTURE.md` §5).
+2. **Normalize to the canonical message** (`docs/ARCHITECTURE.md` §5). Media (image/audio) is downloaded and inlined as a base64 `data:` URI in `media_url` (`app/services/media.py`) — Meta media URLs expire in minutes and the channel-agnostic core can never fetch them.
 3. `POST` the core's `/ingest`.
 4. Render the core's canonical response back to WhatsApp.
 

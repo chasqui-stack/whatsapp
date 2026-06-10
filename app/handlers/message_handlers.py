@@ -13,6 +13,7 @@ import logging
 from datetime import datetime, timezone
 
 from app.services.core_client import CoreClient
+from app.services.media import media_to_data_uri
 
 logger = logging.getLogger(__name__)
 
@@ -139,11 +140,17 @@ async def handle_text_message(client, msg, core: CoreClient):
 
 
 async def handle_audio_message(client, msg, core: CoreClient):
-    await process_update(msg, core, payload_from_audio(msg))
+    payload = payload_from_audio(msg)
+    # Inline the bytes so the (channel-agnostic) core can hear the audio now —
+    # Meta media URLs expire in minutes and require the WA token.
+    payload["message"]["media_url"] = await media_to_data_uri(msg.audio)
+    await process_update(msg, core, payload)
 
 
 async def handle_image_message(client, msg, core: CoreClient):
-    await process_update(msg, core, payload_from_image(msg))
+    payload = payload_from_image(msg)
+    payload["message"]["media_url"] = await media_to_data_uri(msg.image)
+    await process_update(msg, core, payload)
 
 
 async def handle_callback_button(client, cb, core: CoreClient):
