@@ -14,6 +14,8 @@ Python · PyWa 4.x (beta, BSUID-first) · FastAPI · httpx · Sentry · `uv`.
 
 ```bash
 cp .env.example .env     # WhatsApp Business credentials + CORE_URL
+                         # how to get the Meta credentials:
+                         # https://github.com/chasqui-stack/chasqui/blob/main/docs/WHATSAPP-SETUP.md
 uv sync
 make dev
 ```
