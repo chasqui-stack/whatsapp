@@ -69,8 +69,8 @@ class FakeWa:
             {"media": media, "mime_type": mime_type, "filename": filename},
         )
 
-    async def send_audio(self, *, to, audio, is_voice=None):
-        return self._record("send_audio", {"to": to, "audio": audio, "is_voice": is_voice})
+    async def send_audio(self, *, to, audio):
+        return self._record("send_audio", {"to": to, "audio": audio})
 
 
 def _reengagement() -> ReEngagementMessage:
@@ -126,43 +126,42 @@ async def test_send_document_with_filename():
     assert call["mime_type"] == "application/pdf"
 
 
-async def test_ogg_audio_goes_out_as_voice_untouched():
+async def test_mp3_audio_goes_out_untouched():
     wa = FakeWa()
-    audio_uri = "data:audio/ogg;base64," + base64.b64encode(b"OggSOpus").decode()
+    audio_uri = "data:audio/mpeg;base64," + base64.b64encode(b"ID3-mp3").decode()
 
     await send_canonical(wa, request(mtype="audio", text=None, media_url=audio_uri))
 
     upload, send = wa.calls
-    # Explicit upload with a matching filename — PyWa's bytes default is
-    # "audio.mp3", which makes Meta fail OGG uploads asynchronously
+    # Explicit upload with a filename matching the content — Meta fails
+    # filename/content mismatches asynchronously as octet-stream
     assert upload["method"] == "upload_media"
-    assert upload["media"] == b"OggSOpus"
-    assert upload["mime_type"] == "audio/ogg"
-    assert upload["filename"] == "voice.ogg"
+    assert upload["media"] == b"ID3-mp3"
+    assert upload["mime_type"] == "audio/mpeg"
+    assert upload["filename"] == "voice.mp3"
     assert send["method"] == "send_audio"
-    assert send["is_voice"] is True
 
 
-async def test_browser_audio_is_transcoded_to_ogg_voice(monkeypatch):
+async def test_browser_audio_is_transcoded_to_mp3(monkeypatch):
     # Everything MediaRecorder produces (opus-in-mp4, AAC fragmented mp4,
-    # webm) gets normalized — Meta rejects all of them asynchronously.
+    # webm — and even valid OGG) failed live; MP3 is the production-proven
+    # format, so all non-mp3 audio is normalized to it.
     from app.services import sender
 
     async def fake_transcode(data):
         assert data == b"fragmented-mp4-aac"
-        return b"OggS-transcoded"
+        return b"ID3-transcoded"
 
-    monkeypatch.setattr(sender, "_transcode_to_ogg_opus", fake_transcode)
+    monkeypatch.setattr(sender, "_transcode_to_mp3", fake_transcode)
     wa = FakeWa()
     uri = "data:audio/mp4;base64," + base64.b64encode(b"fragmented-mp4-aac").decode()
 
     await send_canonical(wa, request(mtype="audio", text=None, media_url=uri))
 
     upload, send = wa.calls
-    assert upload["media"] == b"OggS-transcoded"
-    assert upload["mime_type"] == "audio/ogg"
-    assert upload["filename"] == "voice.ogg"
-    assert send["is_voice"] is True
+    assert upload["media"] == b"ID3-transcoded"
+    assert upload["mime_type"] == "audio/mpeg"
+    assert upload["filename"] == "voice.mp3"
 
 
 async def test_transcode_failure_sends_original(monkeypatch):
@@ -180,7 +179,6 @@ async def test_transcode_failure_sends_original(monkeypatch):
     assert upload["media"] == webm
     assert upload["mime_type"] == "audio/webm"
     assert upload["filename"] == "voice.bin"
-    assert send["is_voice"] is None
 
 
 async def test_media_type_without_media_url_is_unsupported():

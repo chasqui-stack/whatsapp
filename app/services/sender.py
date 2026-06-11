@@ -69,14 +69,15 @@ def _decode_data_uri(uri: str) -> tuple[str, bytes]:
         raise SendError("INVALID_MEDIA", 422, "media_url is not valid base64") from exc
 
 
-async def _transcode_to_ogg_opus(data: bytes) -> bytes | None:
-    """Normalize browser-recorded audio to OGG/Opus — the ONE format Meta
-    reliably accepts as a voice note. MediaRecorder output is hostile to
-    Meta's processor in every variant we've seen live: Opus muxed into MP4
-    ('not supported'), AAC in FRAGMENTED mp4 ('on processing it is
-    application/octet-stream'), Opus in WebM. ffmpeg eats them all; a few
-    seconds of mono voice transcodes in milliseconds. Best-effort: no ffmpeg
-    or a failure returns None and the original bytes go out as-is."""
+async def _transcode_to_mp3(data: bytes) -> bytes | None:
+    """Normalize browser-recorded audio to MP3 — the format proven against
+    Meta in production (the psicolab/tedi service ships TTS replies as MP3
+    with mime audio/mpeg, no rejections). Everything MediaRecorder produces
+    failed live: Opus-in-MP4 ('not supported'), AAC in FRAGMENTED mp4 and
+    even valid OGG/Opus ('on processing it is application/octet-stream').
+    ffmpeg eats them all; seconds of mono voice transcode in milliseconds.
+    Best-effort: no ffmpeg or a failure returns None and the original bytes
+    go out as-is."""
     if shutil.which("ffmpeg") is None:
         logger.warning(
             "Browser-recorded audio and no ffmpeg on PATH — "
@@ -86,8 +87,8 @@ async def _transcode_to_ogg_opus(data: bytes) -> bytes | None:
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-hide_banner", "-loglevel", "error",
         "-i", "pipe:0",
-        "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1",
-        "-f", "ogg", "pipe:1",
+        "-c:a", "libmp3lame", "-b:a", "64k", "-ac", "1",
+        "-f", "mp3", "pipe:1",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -120,23 +121,20 @@ async def _dispatch(wa, to: str, message: SendMessage):
             caption=message.text,
             mime_type=mime,
         )
-    # audio — anything that isn't already OGG/Opus gets normalized to it
-    # (voice-note format); what we can't transcode goes out as-is
-    is_voice = None
-    if mime == "audio/ogg":
-        is_voice = True
-    else:
-        transcoded = await _transcode_to_ogg_opus(data)
+    # audio — anything that isn't already MP3 gets normalized to it (the
+    # production-proven format); what we can't transcode goes out as-is
+    if mime != "audio/mpeg":
+        transcoded = await _transcode_to_mp3(data)
         if transcoded is not None:
-            mime, data, is_voice = "audio/ogg", transcoded, True
-    # Upload explicitly: send_audio(bytes) has no filename param and PyWa
-    # defaults it to "audio.mp3" — Meta then sniffs the mismatch and fails
-    # the message asynchronously with "it is of type application/octet-stream".
-    ext = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a"}.get(mime, "bin")
+            mime, data = "audio/mpeg", transcoded
+    # Upload explicitly with a filename that MATCHES the content — PyWa's
+    # bytes default works for mp3 ("audio.mp3") but mismatches anything
+    # else, and Meta fails mismatches asynchronously as octet-stream.
+    ext = {"audio/mpeg": "mp3", "audio/ogg": "ogg", "audio/mp4": "m4a"}.get(mime, "bin")
     media = await wa.upload_media(
         media=data, mime_type=mime, filename=f"voice.{ext}"
     )
-    return await wa.send_audio(to=to, audio=media, is_voice=is_voice)
+    return await wa.send_audio(to=to, audio=media)
 
 
 async def send_canonical(wa, request: SendRequest) -> dict:
