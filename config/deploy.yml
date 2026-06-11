@@ -1,17 +1,18 @@
-# Name of your application. Used to uniquely configure containers.
-service: psicolab-whatsapp
+# Kamal 2 deploy config — Chasqui WhatsApp gateway.
+# Placeholders to replace per project: registry username, server IP, hosts.
+service: chasqui-whatsapp
 
 # Name of the container image.
-image: willywg/psicolab-whatsapp
+image: your-username/chasqui-whatsapp
 
 # Deploy to these servers.
 servers:
   web:
     hosts:
-      - 34.134.60.186
+      - 203.0.113.10 # your server IP
 
 registry:
-  username: willywg
+  username: your-username
   password:
     - DOCKER_REGISTRY_PASSWORD
 
@@ -20,37 +21,31 @@ registry:
 env:
   clear:
     PORT: 8000
+    # Where the core lives (the gateway POSTs /ingest there).
+    CORE_URL: "https://api.example.com"
   secret:
+    # --- WhatsApp Business credentials ---
+    # WA_PHONE_ID is REQUIRED for operator replies (POST /send, ADR-004).
     - WA_PHONE_ID
     - WA_TOKEN
     - WA_VERIFY_TOKEN
     - WA_APP_ID
     - WA_APP_SECRET
     - WA_WABA_ID
-    # --- WhatsApp Flow IDs ---
-    - FLOW_ID_GAD7
-    - FLOW_ID_PHQ9
-    - FLOW_ID_WHO5
-    - FLOW_ID_PSS10
-    - FLOW_ID_MBI
-    - FLOW_ID_CSAT
-    - FLOW_ID_ENPS
-    - FLOW_ID_PSC4
-    # --- Backend API ---
-    - BACKEND_URL
-    - BACKEND_API_KEY
-    # --- Sentry ---
-    - SENTRY_DSN
+    # --- Gateway -> core shared secret (same value as the core's) ---
+    - INTERNAL_API_KEY
+    # --- Sentry (optional) — uncomment + add to .kamal/secrets to enable:
+    # - SENTRY_DSN
 
 ssh:
-  user: willywg
+  user: deploy
 
 builder:
   arch: amd64
 
 proxy:
   ssl: true
-  host: "wsp.psicohelp.ai"
+  host: "wsp.example.com"
   app_port: 8000
   healthcheck:
     path: /health
@@ -58,5 +53,7 @@ proxy:
 aliases:
   apps: server exec docker exec kamal-proxy kamal-proxy list
   stats: server exec "docker stats --no-stream"
+  stats-live: server exec -i "docker stats"
   ps: server exec "docker ps"
+  app-terminal: app exec -i "bash"
   logs: app logs -f

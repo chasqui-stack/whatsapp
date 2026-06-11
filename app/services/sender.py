@@ -70,9 +70,9 @@ def _decode_data_uri(uri: str) -> tuple[str, bytes]:
 
 
 async def _transcode_to_mp3(data: bytes) -> bytes | None:
-    """Normalize browser-recorded audio to MP3 — the format proven against
-    Meta in production (the psicolab/tedi service ships TTS replies as MP3
-    with mime audio/mpeg, no rejections). Everything MediaRecorder produces
+    """Normalize browser-recorded audio to MP3 — the only format proven
+    against Meta in production (TTS replies shipped as MP3 with mime
+    audio/mpeg, zero rejections). Everything MediaRecorder produces
     failed live: Opus-in-MP4 ('not supported'), AAC in FRAGMENTED mp4 and
     even valid OGG/Opus ('on processing it is application/octet-stream').
     ffmpeg eats them all; seconds of mono voice transcode in milliseconds.
