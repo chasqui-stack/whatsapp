@@ -12,12 +12,15 @@ panel can explain it. Caveat: Meta sometimes accepts the message and fails
 it asynchronously via a status webhook; this mapping is best-effort.
 """
 
+import base64
 import logging
 
 from pydantic import BaseModel, Field
 from pywa.errors import ReEngagementMessage
 
 logger = logging.getLogger(__name__)
+
+MEDIA_TYPES = ("image", "document", "audio")
 
 
 class SendContact(BaseModel):
@@ -29,6 +32,10 @@ class SendContact(BaseModel):
 class SendMessage(BaseModel):
     type: str = "text"
     text: str | None = Field(default=None, max_length=4096)
+    # base64 `data:` URI for image/document/audio — the exact mirror of the
+    # inbound contract (the gateway can never fetch a core-private URL).
+    media_url: str | None = None
+    filename: str | None = None  # documents: what WhatsApp shows the user
 
 
 class SendRequest(BaseModel):
@@ -46,11 +53,59 @@ class SendError(Exception):
         self.message = message
 
 
+def _decode_data_uri(uri: str) -> tuple[str, bytes]:
+    """'data:<mime>;base64,<payload>' → (mime, bytes). Raises SendError."""
+    header, _, payload = uri.partition(",")
+    if not payload or not header.startswith("data:"):
+        raise SendError(
+            "INVALID_MEDIA", 422, "media_url must be a base64 data: URI"
+        )
+    mime = header.removeprefix("data:").split(";", 1)[0] or "application/octet-stream"
+    try:
+        return mime, base64.b64decode(payload)
+    except Exception as exc:
+        raise SendError("INVALID_MEDIA", 422, "media_url is not valid base64") from exc
+
+
+async def _dispatch(wa, to: str, message: SendMessage):
+    """Route one canonical message to the matching PyWa send call."""
+    if message.type == "text":
+        return await wa.send_message(to=to, text=message.text)
+
+    mime, data = _decode_data_uri(message.media_url)
+    if message.type == "image":
+        return await wa.send_image(
+            to=to, image=data, caption=message.text, mime_type=mime
+        )
+    if message.type == "document":
+        return await wa.send_document(
+            to=to,
+            document=data,
+            filename=message.filename or "document",
+            caption=message.text,
+            mime_type=mime,
+        )
+    # audio — voice notes and audio files alike
+    return await wa.send_audio(to=to, audio=data, mime_type=mime)
+
+
 async def send_canonical(wa, request: SendRequest) -> dict:
     """Render one canonical outbound message on WhatsApp. Raises SendError."""
-    if request.message.type != "text" or not request.message.text:
+    message = request.message
+    if message.type == "text":
+        if not message.text:
+            raise SendError("UNSUPPORTED_TYPE", 422, "Text messages need text")
+    elif message.type in MEDIA_TYPES:
+        if not message.media_url:
+            raise SendError(
+                "UNSUPPORTED_TYPE", 422, f"{message.type} messages need media_url"
+            )
+    else:
         raise SendError(
-            "UNSUPPORTED_TYPE", 422, "Only text messages are supported for now"
+            "UNSUPPORTED_TYPE",
+            422,
+            f"Unsupported outbound type '{message.type}' "
+            f"(text, {', '.join(MEDIA_TYPES)})",
         )
     if not request.contact.wa_id:
         raise SendError(
@@ -61,7 +116,9 @@ async def send_canonical(wa, request: SendRequest) -> dict:
         )
 
     try:
-        sent = await wa.send_message(to=request.contact.wa_id, text=request.message.text)
+        sent = await _dispatch(wa, request.contact.wa_id, message)
+    except SendError:
+        raise
     except ReEngagementMessage as exc:
         logger.warning("24h window expired for %s: %s", request.contact.wa_id, exc)
         raise SendError(
