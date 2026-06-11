@@ -1,9 +1,10 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Annotated
 
 import sentry_sdk
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from pywa_async import WhatsApp, filters, types
 
 from app.core.config import settings
@@ -20,6 +21,7 @@ from app.handlers.message_handlers import (  # noqa: E402
     handle_unsupported_message,
 )
 from app.services.core_client import CoreClient  # noqa: E402
+from app.services.sender import SendError, SendRequest, send_canonical  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -113,6 +115,29 @@ async def on_callback_button(client: WhatsApp, cb: types.CallbackButton):
 @wa.on_message()
 async def on_other_message(client: WhatsApp, msg: types.Message):
     _dispatch(handle_unsupported_message(client, msg))
+
+
+@app.post("/send")
+async def send_message(
+    payload: SendRequest,
+    x_internal_api_key: Annotated[str | None, Header()] = None,
+):
+    """Canonical outbound contract (ADR-004) — the mirror of the core's /ingest.
+
+    Same shared secret as /ingest; unset key = open (dev), matching the core.
+    """
+    if settings.internal_api_key and x_internal_api_key != settings.internal_api_key:
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "UNAUTHORIZED", "message": "Invalid internal API key"},
+        )
+    try:
+        return await send_canonical(wa, payload)
+    except SendError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        )
 
 
 @app.get("/health")

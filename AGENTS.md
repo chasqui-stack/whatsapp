@@ -7,7 +7,8 @@ The **WhatsApp channel adapter** for Chasqui: a thin, **stateless** bridge betwe
 1. Receive WhatsApp webhooks (text, audio, image, buttons).
 2. **Normalize to the canonical message** (`docs/ARCHITECTURE.md` §5). Media (image/audio) is downloaded and inlined as a base64 `data:` URI in `media_url` (`app/services/media.py`) — Meta media URLs expire in minutes and the channel-agnostic core can never fetch them.
 3. `POST` the core's `/ingest`.
-4. Render the core's canonical response back to WhatsApp.
+4. Render the core's canonical response back to WhatsApp. An **empty `messages` list is silence** (human-mode conversations) — render nothing.
+5. Expose **`POST /send`** (ADR-004, `app/services/sender.py`): the canonical **outbound** contract, mirror of `/ingest`, same `INTERNAL_API_KEY`. Addressed by `wa_id` (no BSUID send endpoint at Meta yet → `NO_WA_ID` error); PyWa's `ReEngagementMessage` (24h window, code 131047) maps to `WINDOW_EXPIRED` so the admin panel can explain it.
 
 **Ack Meta fast** (return 200 immediately) and process against the core asynchronously.
 

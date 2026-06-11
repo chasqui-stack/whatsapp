@@ -4,6 +4,8 @@ PyWa-based WhatsApp channel adapter for [Chasqui](https://github.com/chasqui-sta
 
 A thin, **stateless** bridge: it receives WhatsApp webhooks, normalizes them to Chasqui's canonical message contract, forwards them to the [core](https://github.com/chasqui-stack/core)'s `/ingest`, and renders replies back to WhatsApp. No database, no business logic.
 
+It also implements the **canonical outbound contract** (`POST /send`, ADR-004) — the mirror of `/ingest`, authenticated with the same `INTERNAL_API_KEY` — so operators can reply from the admin panel (human-handoff inbox). Sends are addressed by `wa_id` (Meta has no BSUID send endpoint yet); a send outside WhatsApp's 24h customer-service window maps to a clear `WINDOW_EXPIRED` error.
+
 ## Stack
 
 Python · PyWa 4.x (beta, BSUID-first) · FastAPI · httpx · Sentry · `uv`.
