@@ -59,8 +59,8 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.optional-dependencies]
-test = [
+[package.dev-dependencies]
+dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "respx" },
@@ -72,14 +72,17 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "httpx", specifier = ">=0.28.0" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.0" },
     { name = "pywa", extras = ["fastapi"], specifier = ">=4.0.0" },
-    { name = "respx", marker = "extra == 'test'", specifier = ">=0.21.0" },
     { name = "sentry-sdk", specifier = ">=2.52.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
 ]
-provides-extras = ["test"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23.0" },
+    { name = "respx", specifier = ">=0.21.0" },
+]
 
 [[package]]
 name = "click"

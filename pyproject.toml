@@ -14,8 +14,10 @@ dependencies = [
     "uvicorn[standard]>=0.40.0",
 ]
 
-[project.optional-dependencies]
-test = [
+# Dev group: installed by a plain `uv sync` (so a freshly generated project
+# can run `make test` out of the box) — unlike an optional extra.
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "respx>=0.21.0",
