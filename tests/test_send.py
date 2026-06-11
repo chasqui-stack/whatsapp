@@ -63,11 +63,14 @@ class FakeWa:
              "caption": caption, "mime_type": mime_type},
         )
 
-    async def send_audio(self, *, to, audio, mime_type=None, is_voice=None):
+    async def upload_media(self, *, media, mime_type=None, filename=None):
         return self._record(
-            "send_audio",
-            {"to": to, "audio": audio, "mime_type": mime_type, "is_voice": is_voice},
+            "upload_media",
+            {"media": media, "mime_type": mime_type, "filename": filename},
         )
+
+    async def send_audio(self, *, to, audio, is_voice=None):
+        return self._record("send_audio", {"to": to, "audio": audio, "is_voice": is_voice})
 
 
 def _reengagement() -> ReEngagementMessage:
@@ -129,11 +132,15 @@ async def test_ogg_audio_goes_out_as_voice_untouched():
 
     await send_canonical(wa, request(mtype="audio", text=None, media_url=audio_uri))
 
-    call = wa.calls[0]
-    assert call["method"] == "send_audio"
-    assert call["audio"] == b"OggSOpus"
-    assert call["mime_type"] == "audio/ogg"
-    assert call["is_voice"] is True
+    upload, send = wa.calls
+    # Explicit upload with a matching filename — PyWa's bytes default is
+    # "audio.mp3", which makes Meta fail OGG uploads asynchronously
+    assert upload["method"] == "upload_media"
+    assert upload["media"] == b"OggSOpus"
+    assert upload["mime_type"] == "audio/ogg"
+    assert upload["filename"] == "voice.ogg"
+    assert send["method"] == "send_audio"
+    assert send["is_voice"] is True
 
 
 async def test_browser_audio_is_transcoded_to_ogg_voice(monkeypatch):
@@ -151,10 +158,11 @@ async def test_browser_audio_is_transcoded_to_ogg_voice(monkeypatch):
 
     await send_canonical(wa, request(mtype="audio", text=None, media_url=uri))
 
-    call = wa.calls[0]
-    assert call["audio"] == b"OggS-transcoded"
-    assert call["mime_type"] == "audio/ogg"
-    assert call["is_voice"] is True
+    upload, send = wa.calls
+    assert upload["media"] == b"OggS-transcoded"
+    assert upload["mime_type"] == "audio/ogg"
+    assert upload["filename"] == "voice.ogg"
+    assert send["is_voice"] is True
 
 
 async def test_transcode_failure_sends_original(monkeypatch):
@@ -168,10 +176,11 @@ async def test_transcode_failure_sends_original(monkeypatch):
 
     await send_canonical(wa, request(mtype="audio", text=None, media_url=uri))
 
-    call = wa.calls[0]
-    assert call["audio"] == webm
-    assert call["mime_type"] == "audio/webm"
-    assert call["is_voice"] is None
+    upload, send = wa.calls
+    assert upload["media"] == webm
+    assert upload["mime_type"] == "audio/webm"
+    assert upload["filename"] == "voice.bin"
+    assert send["is_voice"] is None
 
 
 async def test_media_type_without_media_url_is_unsupported():

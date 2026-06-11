@@ -26,5 +26,25 @@ class CoreClient:
             logger.error("core /ingest error: %s", e)
             return None
 
+    async def notify_status(
+        self, message_id: str, status: str, code: str | None, detail: str | None
+    ) -> None:
+        """Forward an async delivery status (e.g. Meta's late rejection of an
+        accepted send) to the core so the admin panel can surface it."""
+        try:
+            response = await self.client.post(
+                "/channel/status",
+                json={
+                    "message_id": message_id,
+                    "status": status,
+                    "code": code,
+                    "detail": detail,
+                },
+                headers=self.headers,
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            logger.error("core /channel/status error: %s", e)
+
     async def close(self) -> None:
         await self.client.aclose()

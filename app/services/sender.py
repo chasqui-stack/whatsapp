@@ -129,7 +129,14 @@ async def _dispatch(wa, to: str, message: SendMessage):
         transcoded = await _transcode_to_ogg_opus(data)
         if transcoded is not None:
             mime, data, is_voice = "audio/ogg", transcoded, True
-    return await wa.send_audio(to=to, audio=data, mime_type=mime, is_voice=is_voice)
+    # Upload explicitly: send_audio(bytes) has no filename param and PyWa
+    # defaults it to "audio.mp3" — Meta then sniffs the mismatch and fails
+    # the message asynchronously with "it is of type application/octet-stream".
+    ext = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a"}.get(mime, "bin")
+    media = await wa.upload_media(
+        media=data, mime_type=mime, filename=f"voice.{ext}"
+    )
+    return await wa.send_audio(to=to, audio=media, is_voice=is_voice)
 
 
 async def send_canonical(wa, request: SendRequest) -> dict:

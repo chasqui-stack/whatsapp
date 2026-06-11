@@ -124,9 +124,21 @@ async def on_other_message(client: WhatsApp, msg: types.Message):
 @wa.on_message_status(filters.failed)
 async def on_failed_status(client: WhatsApp, status: types.MessageStatus):
     # Meta often ACCEPTS a send (200 + wamid) and rejects it asynchronously
-    # (unsupported codec, policy, re-engagement). Without this handler those
-    # failures are invisible — the message looks sent but never arrives.
+    # (unsupported codec, policy, re-engagement). Log it AND forward it to
+    # the core so the admin panel shows "not delivered" on the message.
     logger.error("Outbound message %s FAILED asynchronously: %s", status.id, status.error)
+    code = getattr(status.error, "code", None)
+    detail = (
+        getattr(status.error, "details", None)
+        or getattr(status.error, "message", None)
+        or (str(status.error) if status.error else None)
+    )
+    await get_core().notify_status(
+        message_id=status.id,
+        status="failed",
+        code=str(code) if code is not None else None,
+        detail=detail,
+    )
 
 
 @app.post("/send")
