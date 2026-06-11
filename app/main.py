@@ -67,6 +67,10 @@ wa_kwargs = dict(
 # webhook is configured manually in Meta Business Suite.
 if settings.wa_callback_url:
     wa_kwargs["callback_url"] = settings.wa_callback_url
+# Inbound replies infer the sender from the update, but client-initiated
+# sends (POST /send, ADR-004) need the business phone number id.
+if settings.wa_phone_id:
+    wa_kwargs["phone_id"] = settings.wa_phone_id
 
 wa = WhatsApp(**wa_kwargs)
 
@@ -130,6 +134,15 @@ async def send_message(
         raise HTTPException(
             status_code=401,
             detail={"code": "UNAUTHORIZED", "message": "Invalid internal API key"},
+        )
+    if not settings.wa_phone_id:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "code": "SEND_FAILED",
+                "message": "WA_PHONE_ID is not configured in the gateway — "
+                "client-initiated sends need the business phone number id",
+            },
         )
     try:
         return await send_canonical(wa, payload)
