@@ -12,8 +12,10 @@ panel can explain it. Caveat: Meta sometimes accepts the message and fails
 it asynchronously via a status webhook; this mapping is best-effort.
 """
 
+import asyncio
 import base64
 import logging
+import shutil
 
 from pydantic import BaseModel, Field
 from pywa.errors import ReEngagementMessage
@@ -67,6 +69,44 @@ def _decode_data_uri(uri: str) -> tuple[str, bytes]:
         raise SendError("INVALID_MEDIA", 422, "media_url is not valid base64") from exc
 
 
+def _is_opus_outside_ogg(mime: str, data: bytes) -> bool:
+    """WhatsApp only accepts Opus inside OGG (and AAC inside m4a) — browser
+    recorders (MediaRecorder) produce Opus in WebM or even in MP4, which
+    Meta accepts with a 200 and then REJECTS asynchronously via a status
+    webhook. Detect it so we can remux before Meta ever sees it."""
+    if mime == "audio/webm":
+        return True
+    # Opus-in-MP4: the moov sample description carries the 'Opus' fourcc
+    return mime == "audio/mp4" and b"Opus" in data[:8192]
+
+
+async def _remux_opus_to_ogg(data: bytes) -> bytes | None:
+    """Repackage Opus into an OGG container with ffmpeg (`-c:a copy` — pure
+    remux, no re-encode, milliseconds). Best-effort: no ffmpeg or a remux
+    failure returns None and the original bytes go out as-is."""
+    if shutil.which("ffmpeg") is None:
+        logger.warning(
+            "Opus audio in an unsupported container and no ffmpeg on PATH — "
+            "sending as-is (Meta will likely reject it asynchronously)"
+        )
+        return None
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-loglevel", "error",
+        "-i", "pipe:0", "-c:a", "copy", "-f", "ogg", "pipe:1",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate(data)
+    if proc.returncode != 0 or not out:
+        logger.warning(
+            "ffmpeg remux failed — sending original audio: %s",
+            err.decode(errors="replace")[:200],
+        )
+        return None
+    return out
+
+
 async def _dispatch(wa, to: str, message: SendMessage):
     """Route one canonical message to the matching PyWa send call."""
     if message.type == "text":
@@ -85,8 +125,14 @@ async def _dispatch(wa, to: str, message: SendMessage):
             caption=message.text,
             mime_type=mime,
         )
-    # audio — voice notes and audio files alike
-    return await wa.send_audio(to=to, audio=data, mime_type=mime)
+    # audio — remux browser-recorded Opus into OGG (the one container Meta
+    # accepts it in); a successful remux ships as a real voice note
+    is_voice = None
+    if _is_opus_outside_ogg(mime, data):
+        remuxed = await _remux_opus_to_ogg(data)
+        if remuxed is not None:
+            mime, data, is_voice = "audio/ogg", remuxed, True
+    return await wa.send_audio(to=to, audio=data, mime_type=mime, is_voice=is_voice)
 
 
 async def send_canonical(wa, request: SendRequest) -> dict:
