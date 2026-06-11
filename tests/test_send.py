@@ -123,49 +123,41 @@ async def test_send_document_with_filename():
     assert call["mime_type"] == "application/pdf"
 
 
-async def test_send_audio():
+async def test_ogg_audio_goes_out_as_voice_untouched():
     wa = FakeWa()
-    audio_uri = "data:audio/mp4;base64," + base64.b64encode(b"fake-aac").decode()
+    audio_uri = "data:audio/ogg;base64," + base64.b64encode(b"OggSOpus").decode()
 
     await send_canonical(wa, request(mtype="audio", text=None, media_url=audio_uri))
 
     call = wa.calls[0]
     assert call["method"] == "send_audio"
-    assert call["audio"] == b"fake-aac"
-    assert call["mime_type"] == "audio/mp4"
-    assert call["is_voice"] is None  # AAC m4a goes out untouched
-
-
-def test_opus_outside_ogg_detection():
-    from app.services.sender import _is_opus_outside_ogg
-
-    assert _is_opus_outside_ogg("audio/webm", b"\x1aE\xdf\xa3whatever")
-    assert _is_opus_outside_ogg("audio/mp4", b"....ftypisom....Opus....")
-    assert not _is_opus_outside_ogg("audio/mp4", b"....ftypisom....mp4a....")
-    assert not _is_opus_outside_ogg("audio/ogg", b"OggSOpusHead")
-
-
-async def test_opus_in_mp4_is_remuxed_to_ogg_voice(monkeypatch):
-    from app.services import sender
-
-    async def fake_remux(data):
-        assert b"Opus" in data
-        return b"OggS-remuxed"
-
-    monkeypatch.setattr(sender, "_remux_opus_to_ogg", fake_remux)
-    wa = FakeWa()
-    opus_mp4 = b"\x00\x00\x00\x24ftypisom" + b"Opus" + b"\x00" * 16
-    uri = "data:audio/mp4;base64," + base64.b64encode(opus_mp4).decode()
-
-    await send_canonical(wa, request(mtype="audio", text=None, media_url=uri))
-
-    call = wa.calls[0]
-    assert call["audio"] == b"OggS-remuxed"
+    assert call["audio"] == b"OggSOpus"
     assert call["mime_type"] == "audio/ogg"
     assert call["is_voice"] is True
 
 
-async def test_remux_failure_sends_original(monkeypatch):
+async def test_browser_audio_is_transcoded_to_ogg_voice(monkeypatch):
+    # Everything MediaRecorder produces (opus-in-mp4, AAC fragmented mp4,
+    # webm) gets normalized — Meta rejects all of them asynchronously.
+    from app.services import sender
+
+    async def fake_transcode(data):
+        assert data == b"fragmented-mp4-aac"
+        return b"OggS-transcoded"
+
+    monkeypatch.setattr(sender, "_transcode_to_ogg_opus", fake_transcode)
+    wa = FakeWa()
+    uri = "data:audio/mp4;base64," + base64.b64encode(b"fragmented-mp4-aac").decode()
+
+    await send_canonical(wa, request(mtype="audio", text=None, media_url=uri))
+
+    call = wa.calls[0]
+    assert call["audio"] == b"OggS-transcoded"
+    assert call["mime_type"] == "audio/ogg"
+    assert call["is_voice"] is True
+
+
+async def test_transcode_failure_sends_original(monkeypatch):
     from app.services import sender
 
     # No ffmpeg on PATH → best-effort passthrough

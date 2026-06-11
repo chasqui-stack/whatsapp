@@ -69,30 +69,25 @@ def _decode_data_uri(uri: str) -> tuple[str, bytes]:
         raise SendError("INVALID_MEDIA", 422, "media_url is not valid base64") from exc
 
 
-def _is_opus_outside_ogg(mime: str, data: bytes) -> bool:
-    """WhatsApp only accepts Opus inside OGG (and AAC inside m4a) — browser
-    recorders (MediaRecorder) produce Opus in WebM or even in MP4, which
-    Meta accepts with a 200 and then REJECTS asynchronously via a status
-    webhook. Detect it so we can remux before Meta ever sees it."""
-    if mime == "audio/webm":
-        return True
-    # Opus-in-MP4: the moov sample description carries the 'Opus' fourcc
-    return mime == "audio/mp4" and b"Opus" in data[:8192]
-
-
-async def _remux_opus_to_ogg(data: bytes) -> bytes | None:
-    """Repackage Opus into an OGG container with ffmpeg (`-c:a copy` — pure
-    remux, no re-encode, milliseconds). Best-effort: no ffmpeg or a remux
-    failure returns None and the original bytes go out as-is."""
+async def _transcode_to_ogg_opus(data: bytes) -> bytes | None:
+    """Normalize browser-recorded audio to OGG/Opus — the ONE format Meta
+    reliably accepts as a voice note. MediaRecorder output is hostile to
+    Meta's processor in every variant we've seen live: Opus muxed into MP4
+    ('not supported'), AAC in FRAGMENTED mp4 ('on processing it is
+    application/octet-stream'), Opus in WebM. ffmpeg eats them all; a few
+    seconds of mono voice transcodes in milliseconds. Best-effort: no ffmpeg
+    or a failure returns None and the original bytes go out as-is."""
     if shutil.which("ffmpeg") is None:
         logger.warning(
-            "Opus audio in an unsupported container and no ffmpeg on PATH — "
+            "Browser-recorded audio and no ffmpeg on PATH — "
             "sending as-is (Meta will likely reject it asynchronously)"
         )
         return None
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-hide_banner", "-loglevel", "error",
-        "-i", "pipe:0", "-c:a", "copy", "-f", "ogg", "pipe:1",
+        "-i", "pipe:0",
+        "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", "-ac", "1",
+        "-f", "ogg", "pipe:1",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -100,7 +95,7 @@ async def _remux_opus_to_ogg(data: bytes) -> bytes | None:
     out, err = await proc.communicate(data)
     if proc.returncode != 0 or not out:
         logger.warning(
-            "ffmpeg remux failed — sending original audio: %s",
+            "ffmpeg transcode failed — sending original audio: %s",
             err.decode(errors="replace")[:200],
         )
         return None
@@ -125,13 +120,15 @@ async def _dispatch(wa, to: str, message: SendMessage):
             caption=message.text,
             mime_type=mime,
         )
-    # audio — remux browser-recorded Opus into OGG (the one container Meta
-    # accepts it in); a successful remux ships as a real voice note
+    # audio — anything that isn't already OGG/Opus gets normalized to it
+    # (voice-note format); what we can't transcode goes out as-is
     is_voice = None
-    if _is_opus_outside_ogg(mime, data):
-        remuxed = await _remux_opus_to_ogg(data)
-        if remuxed is not None:
-            mime, data, is_voice = "audio/ogg", remuxed, True
+    if mime == "audio/ogg":
+        is_voice = True
+    else:
+        transcoded = await _transcode_to_ogg_opus(data)
+        if transcoded is not None:
+            mime, data, is_voice = "audio/ogg", transcoded, True
     return await wa.send_audio(to=to, audio=data, mime_type=mime, is_voice=is_voice)
 
 
