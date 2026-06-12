@@ -1,6 +1,6 @@
 # Chasqui WhatsApp Gateway
 
-PyWa-based WhatsApp channel adapter for [Chasqui](https://github.com/chasqui-stack/chasqui), the open-source stack for building WhatsApp AI agents.
+PyWa-based WhatsApp channel adapter for [Chasqui](https://github.com/chasqui-stack/chasqui), the open-source stack for building custom AI chat agents (WhatsApp first; more channels on the roadmap).
 
 A thin, **stateless** bridge: it receives WhatsApp webhooks, normalizes them to Chasqui's canonical message contract, forwards them to the [core](https://github.com/chasqui-stack/core)'s `/ingest`, and renders replies back to WhatsApp. No database, no business logic.
 
