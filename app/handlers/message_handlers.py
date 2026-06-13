@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 from app.core.config import settings
 from app.services.core_client import CoreClient
+from app.services.formatting import to_whatsapp
 from app.services.media import media_to_data_uri
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ async def _reply_canonical(update, result: dict) -> None:
     """Render the core's canonical response messages back to WhatsApp."""
     for m in result.get("messages", []):
         if m.get("type") == "text" and m.get("text"):
-            await update.reply(m["text"], preview_url=True)
+            await update.reply(to_whatsapp(m["text"]), preview_url=True)
         else:
             # Outbound buttons/media land in a later sprint
             logger.warning("Skipping unsupported outbound message type: %s", m.get("type"))

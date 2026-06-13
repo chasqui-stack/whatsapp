@@ -40,3 +40,4 @@ PRPs and the sprint plan live in the **parent repo** (`../PRPs`, `../docs`).
 - Use `wa_id` as the primary identifier (use `bsuid`).
 - Block the webhook waiting on the core (ack first, process async).
 - **Hardcode user-facing literals.** The agent localizes per-user via the system prompt; the few non-agent replies (core unreachable, unsupported type) are English defaults configurable via `.env` (`ERROR_REPLY`/`UNSUPPORTED_REPLY`) — set them per-deployment in your users' language. They must be gateway-local: they fire exactly when the core is unreachable.
+- **Send canonical text raw.** `message.text` is Markdown (ARCHITECTURE §5, [ADR-007](https://github.com/chasqui-stack/chasqui/blob/main/docs/design/adr-007-canonical-markdown-rendering.md)); the gateway renders it to WhatsApp syntax (`app/services/formatting.py`) before replying. Don't push channel formatting into the core.
