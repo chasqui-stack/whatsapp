@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     core_url: str = "http://localhost:8090"
     internal_api_key: str = ""
 
+    # User-facing gateway fallbacks. English by default (English-only codebase);
+    # set them in your users' language via .env — the same posture as the core's
+    # FALLBACK_REPLY. The agent itself localizes via the DB system prompt; these
+    # only fire when the core is unreachable or a message type isn't handled.
+    error_reply: str = (
+        "Sorry, we hit a technical issue. Please try again in a few minutes."
+    )
+    unsupported_reply: str = (
+        "For now I only handle text, audio, images and buttons. "
+        "Send me a message and I'll be glad to help."
+    )
+
     # Sentry
     sentry_dsn: str = ""
 

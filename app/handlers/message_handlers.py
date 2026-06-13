@@ -12,19 +12,11 @@ dispatched as background tasks from main.py so the webhook acks Meta fast.
 import logging
 from datetime import datetime, timezone
 
+from app.core.config import settings
 from app.services.core_client import CoreClient
 from app.services.media import media_to_data_uri
 
 logger = logging.getLogger(__name__)
-
-ERROR_MSG = (
-    "Disculpa, tuvimos un inconveniente técnico. "
-    "Intenta de nuevo en unos minutos."
-)
-UNSUPPORTED_MSG = (
-    "Por ahora solo proceso mensajes de texto, audios, imágenes y botones. "
-    "Envíame un texto y con gusto te ayudo \U0001f60a"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -120,13 +112,13 @@ async def process_update(update, core: CoreClient, payload: dict) -> None:
         await update.indicate_typing()
         result = await core.ingest(payload)
         if not result:
-            await update.reply(ERROR_MSG)
+            await update.reply(settings.error_reply)
             return
         await _reply_canonical(update, result)
     except Exception:
         logger.exception("Failed processing update %s", getattr(update, "id", "?"))
         try:
-            await update.reply(ERROR_MSG)
+            await update.reply(settings.error_reply)
         except Exception:  # pragma: no cover - best effort
             logger.exception("Could not deliver error reply")
 
@@ -160,4 +152,4 @@ async def handle_callback_button(client, cb, core: CoreClient):
 async def handle_unsupported_message(client, msg):
     """Reply that this message type isn't supported yet."""
     logger.info("Unsupported message type '%s'", getattr(msg, "type", "?"))
-    await msg.reply(UNSUPPORTED_MSG)
+    await msg.reply(settings.unsupported_reply)
